@@ -1,0 +1,10 @@
+__pycache__/
+
+ckpts/
+lightning_logs/
+LOTdatasets/
+output/
+wandb/
+models/
+
+*.out
