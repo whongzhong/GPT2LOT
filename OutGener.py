@@ -21,7 +21,7 @@ class OutGenerModel(LightningModule):
         if self.args.model_name == 'BART':
             self.model = AutoModelForSeq2SeqLM.from_pretrained(args.model_path) 
         else:
-            self.model = AutoModelWithLMHead.from_pretrained(args.model_path)     
+            self.model = AutoModelWithLMHead.from_pretrained(args.model_path)
         self.model_name = args.model_name
         self.tokenizer = tokenizer
         self.model.resize_token_embeddings((len(self.tokenizer)))
@@ -29,6 +29,7 @@ class OutGenerModel(LightningModule):
         self.special_tokens = special_tokens
         self.delimeter_ids = self.tokenizer.convert_tokens_to_ids(special_tokens['delimeter'])
         self.pad_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token)
+        self.sep_ids = self.tokenizer.convert_tokens_to_ids(special_tokens['sep'])
 
         self.model.config.decoder_start_token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.bos_token)
         self.model.config.eos_token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token)
@@ -72,6 +73,13 @@ class OutGenerModel(LightningModule):
             }
 
     def forward(self, input_ids, max_length=512):
+        '''
+        output = self.model.generate(input_ids, max_length=max_length,\
+            num_beams=5, early_stopping=True,\
+            decoder_start_token_id=self.tokenizer.bos_token_id, bos_token_id = self.tokenizer.bos_token_id,\
+            eos_token_id=self.tokenizer.eos_token_id, min_length = self.args.min_length)
+        '''
+        # attention mask
         output = self.model.generate(input_ids, do_sample=True, max_length=max_length,\
             top_k=0, top_p=0.9, length_penalty = self.args.length_penalty,\
             decoder_start_token_id=self.tokenizer.bos_token_id, bos_token_id = self.tokenizer.bos_token_id,\
@@ -79,23 +87,39 @@ class OutGenerModel(LightningModule):
         return output
 
     def training_step(self, batch, batch_idx):
-
-        encoded_batch, attention_mask, encoded_label_batch = batch
+        if self.args.model_name == "BART":
+            encoded_batch, attention_mask, encoded_label_batch, _ = batch
+        else: 
+            encoded_batch, attention_mask, encoded_label_batch, _ = batch
 
         output = self.model(encoded_batch, attention_mask=attention_mask, labels=encoded_label_batch, return_dict=True)
 
         return output['loss']
 
     def validation_step(self, batch, batch_idx):
-        encoded_batch, attention_mask, encoded_label_batch = batch
+        if self.args.model_name == "BART":
+            encoded_batch, attention_mask, encoded_label_batch, answer_batch = batch
+            generation_result = self(encoded_batch)
+        else: 
+            encoded_batch, attention_mask, encoded_label_batch, encoded_generate_batch = batch
+            generation_result_sent = self(encoded_generate_batch, self.args.max_length * 2)
+            generation_result = [(generation_result_sent_sample, len(encoded_generate_input)) for generation_result_sent_sample, encoded_generate_input in zip(generation_result_sent, encoded_generate_batch)]
+            '''
+            generation_result = []
+            for encoded_generate_input in encoded_generate_batch:
+                output = self(encoded_generate_input[encoded_generate_input\
+                     != self.pad_id].unsqueeze(0))
+                generation_result.append((output,\
+                     len(encoded_generate_input[encoded_generate_input\
+                     != self.pad_id])))
+            '''
         output_loss = self.model(encoded_batch, attention_mask=attention_mask, labels=encoded_label_batch, return_dict=True)['loss']
-        output = self(encoded_batch)
 
-        label_num = len(encoded_label_batch[encoded_label_batch != -100].view(-1))
+        label_num = len(encoded_label_batch[encoded_label_batch != self.pad_id].view(-1))
         label_batch, inference_result, key_word_batch = \
-            self.post_process_for_validation(encoded_batch, encoded_label_batch, output)
-        
+            self.post_process_for_validation(encoded_batch, answer_batch, generation_result)
         return output_loss, label_num, label_batch, inference_result, key_word_batch
+        
 
     def validation_epoch_end(self, validation_output) -> None:
         outputs, label_batch, inference_result, key_word_batch = [], [], [], []
@@ -119,38 +143,42 @@ class OutGenerModel(LightningModule):
 
         if not self.trainer.running_sanity_check:
             wandb.log(res)
-            self.log("ppl", ppl)
-            self.log("bleu-1", res['bleu-1'])
+            self.log("ppl", ppl, sync_dist=True)
+            self.log("bleu-1", res['bleu-1'], sync_dist=True)
 
-    def post_process_for_validation(self, encoded_batch, encoded_label_batch, output):
+    def post_process_for_validation(self, encoded_batch, answer_batch, generation_result):
         if self.args.model_name == "BART":
             
             inference_result = [self.tokenizer.decode(sample[1:-1], skip_special_tokens=True)\
-                    .replace(" ", "").replace(self.special_tokens['delimeter'], "") for sample in output]
+                    .replace(" ", "").replace(self.special_tokens['delimeter'], "") for sample in generation_result]
 
-            label_batch = [self.tokenizer.decode(sample[sample != -100], skip_special_tokens=True)\
-                    .replace(" ", "").replace(self.special_tokens['delimeter'], "") for sample in encoded_label_batch]
+            label_batch = answer_batch
 
             key_word_batch = [self.tokenizer.decode(sample, skip_special_tokens=False)\
                     .replace(" ", "").replace(self.tokenizer.cls_token, "").replace(self.tokenizer.pad_token, "")\
                     .replace(self.tokenizer.sep_token, "") for sample in encoded_batch]
-
+            print("\n")
+            print(key_word_batch[0])
+            print("\n")
+            print(inference_result[0])
         else:
             
-            inference_result = [self.tokenizer.decode(output[:,1:-1], skip_special_tokens=True)\
-                    .replace(" ", "").replace(self.special_tokens['delimeter'], "") for sample in output]
+            inference_result = [self.tokenizer.decode(sample[input_len:], skip_special_tokens=True)\
+                    .replace(" ", "").replace(self.special_tokens['delimeter'], "") for sample, input_len in generation_result]
 
             label_batch = [self.tokenizer.decode(sample[sample != -100], skip_special_tokens=True)\
-                    .replace(" ", "").replace(self.special_tokens['delimeter'], "") for sample in encoded_label_batch]
-
-            delimeter_idx = [itm.index(self.delimeter_ids) for itm in encoded_batch]
+                    .replace(" ", "").replace(self.special_tokens['delimeter'], "") for sample in answer_batch]
             
-            for delimeter_id in delimeter_idx:
-                encoded_batch[:, delimeter_id:] = -100
-            key_word_batch = [self.tokenizer.decode(sample, skip_special_tokens=False)\
+            encoded_batch_list = encoded_batch.tolist()
+            delimeter_idx = [itm.index(self.sep_ids) for itm in encoded_batch_list]
+            
+            key_word_batch = [self.tokenizer.decode(sample[:ids], skip_special_tokens=False)\
                     .replace(" ", "").replace(self.tokenizer.cls_token, "").replace(self.tokenizer.pad_token, "")\
-                    .replace(self.tokenizer.sep_token, "") for sample in encoded_batch]
-
+                    .replace(self.tokenizer.sep_token, "") for sample, ids in zip(encoded_batch,delimeter_idx)]
+            print("\n")
+            print(key_word_batch[0])
+            print("\n")
+            print(inference_result[0])
 
         return label_batch, inference_result, key_word_batch
 '''

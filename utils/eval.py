@@ -5,7 +5,7 @@ import numpy as np
 import jieba
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from nltk import ngrams
-#from rouge import Rouge
+from rouge import Rouge
 def bleu(data):
     """
     compute rouge score
@@ -246,7 +246,7 @@ def compute_batch(golden_batch, pred_batch, key_word_batch, return_dict=True):
     eval_data = [{"reference": proline(g), "candidate": proline(p)} for g, p in zip(truth, pred)]
     res = bleu(eval_data)
     res.update(repetition_distinct(eval_data))
-    #res.update(rouge(ipt=ipt, cand=pred))
+    res.update(rouge(ipt=ipt, cand=pred))
     res.update(order(ipt=ipt, cand=pred, kw2id=kw2id))
     
     # for key in res:
@@ -285,7 +285,7 @@ def compute(golden_file, pred_file, return_dict=True):
     eval_data = [{"reference": proline(g["story"]), "candidate": proline(p["story"])} for g, p in zip(golden_data, pred_data)]
     res = bleu(eval_data)
     res.update(repetition_distinct(eval_data))
-    #res.update(rouge(ipt=ipt, cand=pred))
+    res.update(rouge(ipt=ipt, cand=pred))
     res.update(order(ipt=ipt, cand=pred, kw2id=kw2id))
     
     # for key in res:

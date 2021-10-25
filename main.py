@@ -1,6 +1,7 @@
 import argparse
 from ast import parse
 from fsspec import spec
+from pytorch_lightning.accelerators import accelerator
 import tokenizers
 from torch._C import device
 from tqdm import tqdm
@@ -17,11 +18,11 @@ from pytorch_lightning.utilities import seed
 from pytorch_lightning.callbacks import ModelCheckpoint
 
 
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, dataloader
 
 from transformers import (
     BertTokenizer,
-    AutoTokenizer
+    XLNetTokenizer
 )
 
 def parse_args():
@@ -42,19 +43,25 @@ def parse_args():
 
     parser.add_argument("--model_name", type=str, default="BART", help="Path to output generating files")
     
-    parser.add_argument("--max_length", type=int, default=512)
+    parser.add_argument("--max_length", type=int, default=500)
     parser.add_argument("--min_length", type=int, default=200)
     parser.add_argument("--train_batch_size", type=int, default=8)
     parser.add_argument("--val_batch_size", type=int, default=8)
     parser.add_argument("--test_batch_size", type=int, default=1)
     parser.add_argument("--epoch_num", type=int, default=12)
     parser.add_argument("--workers", type=int, default=1)
+
+    parser.add_argument("--eos_token", type=str, default="[EOS]")
+    parser.add_argument("--bos_token", type=str, default="[BOS]")
+    parser.add_argument("--sep_token", type=str, default="[PAD]")
+    parser.add_argument("--delimeter_token", type=str, default="<DELIMETER>")
+    parser.add_argument("--pad_token", type=str, default="[PAD]")
     
     parser.add_argument("--adam_epsilon", default=1e-8, type=float, help="Epsilon for Adam optimizer.")
-    parser.add_argument("--learning_rate", type=float, default=6.25e-5)
-    parser.add_argument("--warmup_steps", default=0, type=int, help="Linear warmup over warmup_steps.")
+    parser.add_argument("--learning_rate", type=float, default=3e-5)
+    parser.add_argument("--warmup_steps", default=100, type=int, help="Linear warmup over warmup_steps.")
     parser.add_argument("--lr_schedule", type=str, default="warmup_linear")
-    parser.add_argument("--weight_decay", type=float, default=0.01)
+    parser.add_argument("--weight_decay", type=float, default=0)
     parser.add_argument("--lm_coef", type=float, default=0.9)
     parser.add_argument("--n_valid", type=int, default=374)
     parser.add_argument('--length_penalty', default=1, type=float, required=False, help='long text > 1; short text < 1')
@@ -70,13 +77,19 @@ def parse_args():
 
 def redefine_tokenizer(args):
 
-    special_tokens = {'delimeter': '<DELIMETER>', 'eos': '[EOS]', 'bos': '[BOS]', 'sep': '<SEPE>'}
-    addtional_tokens = {'bos_token': special_tokens['bos'], 'eos_token': special_tokens['eos'], 'additional_special_tokens':\
-        ['<DELIMETER>', '<SEPE>']}
     if args.model_name == 'BART':
+        
+        special_tokens = {'delimeter': args.delimeter_token, 'eos': args.eos_token, 'bos': args.bos_token, 'sep': args.sep_token}
+        addtional_tokens = {'bos_token': special_tokens['bos'], 'eos_token': special_tokens['eos'], 'additional_special_tokens':\
+            ['<DELIMETER>', '<SEPE>']}
         tokenizer = BertTokenizer.from_pretrained(args.model_path)
     else:
-        tokenizer = AutoTokenizer.from_pretrained(args.model_path)
+        special_tokens = {'delimeter': args.delimeter_token, 'eos': args.eos_token, 'bos': args.bos_token, 'sep': args.sep_token, 'pad': args.pad_token}
+        addtional_tokens = {'bos_token': special_tokens['bos'], 'eos_token': special_tokens['eos'], 'additional_special_tokens':\
+            ['<DELIMETER>', '<SEPE>'], 'pad_token': special_tokens['pad']}
+        
+        tokenizer = XLNetTokenizer.from_pretrained(args.model_path)
+        tokenizer.padding_side = 'right'
     # spacial_tokens = ['START', 'DELIMITER']
     #tokenizer.add_tokens(list(special_tokens.values()))
     #tokenizer.eos_token = special_tokens['eos']
@@ -84,6 +97,46 @@ def redefine_tokenizer(args):
     #tokenizer.pad_token = '[PAD]'
     tokenizer.add_special_tokens(addtional_tokens)
     return tokenizer, special_tokens
+
+def batch_generation(args):
+    
+    args = parse_args()
+    
+    seed.seed_everything(args.random_seed)
+
+    tokenizer, special_tokens = redefine_tokenizer(args)
+
+    dataset = DataLoader(OutGenDataset(args.data_root, 'test', special_tokens), \
+    batch_size=args.test_batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    # args, tokenizer, special_tokens, batch_num
+    model = OutGenerModel.load_from_checkpoint(os.path.join("~/code/GPT2LOT",args.ckpt_dir, args.test_model), \
+        args=args, tokenizer=tokenizer, special_tokens=special_tokens)
+    model.to(device)
+    model.eval()
+
+    if not os.path.exists(args.output_dir):
+        os.mkdir(args.output_dir)
+
+    with open(os.path.join(args.output_dir, f'{args.model_name}_test.json'), 'w') as f:
+        for item in tqdm(dataset):
+            context_batch = item['source']
+            # use the predefined model length 
+            encoded_batch = tokenizer(context_batch, padding=True, max_length=args.max_length, truncation=True)
+            sentence_ids = torch.tensor(encoded_batch.input_ids)
+            sentence_ids = sentence_ids.to(device)
+            output = model(sentence_ids, max_length=args.max_length)
+            if args.model_name == "BART":
+                inference_results = [tokenizer.decode(sample, skip_special_tokens=True)\
+                    .replace(" ", "").replace(special_tokens['delimeter'], "") for sample in output]
+                for inference_result in inference_results:
+                    f.write(inference_result + "\n")    
+            else:
+                inference_result = tokenizer.decode(output[0][len(sentence_ids[0]):], skip_special_tokens=True)\
+                    .replace(" ", "").replace("\n", "")
+                f.write(inference_result + "\n")    
 
 def generation(args):
     
@@ -110,9 +163,13 @@ def generation(args):
             line = item['source']
             sentence_ids = torch.tensor([tokenizer(line).input_ids])
             sentence_ids = sentence_ids.to(device)
-            output = model(sentence_ids, max_length=512)
-            inference_result = tokenizer.decode(output[0][1:-1], skip_special_tokens=True)\
+            output = model(sentence_ids, max_length=args.max_length)
+            if args.model_name == "BART":
+                inference_result = tokenizer.decode(output[0], skip_special_tokens=True)\
                 .replace(" ", "").replace(special_tokens['delimeter'], "")
+            else:
+                inference_result = tokenizer.decode(output[0][len(sentence_ids[0]):], skip_special_tokens=True)\
+                    .replace(" ", "").replace("\n", "")
             f.write(inference_result + "\n")
 
 def main(args):
@@ -125,16 +182,20 @@ def main(args):
     tokenizer, special_tokens = redefine_tokenizer(args)
 
     dataloader = OutGenDataModule(args.data_root, tokenizer, args, special_tokens)
-
     checkpoint_callback = ModelCheckpoint(
         monitor="bleu-1",
         dirpath=args.ckpt_dir,
         filename=args.model_name+"-{epoch:2d}",
-        save_top_k=3,
-        every_n_epochs=2
+        save_top_k=5,
+        every_n_epochs=2,
+        mode="max"
     )
 
-    model = OutGenerModel(args, tokenizer, special_tokens)
+    #model = OutGenerModel(args, tokenizer, special_tokens)
+    model = OutGenerModel.load_from_checkpoint(os.path.join(args.ckpt_dir, args.\
+        test_model), args=args, tokenizer=tokenizer, special_tokens=special_tokens)
+    # accelerator="ddp", 
+    #trainer = Trainer(gpus=-1, accelerator="ddp", callbacks=[checkpoint_callback], max_epochs=args.epoch_num)
     trainer = Trainer(gpus=-1, callbacks=[checkpoint_callback], max_epochs=args.epoch_num)
     trainer.fit(model, datamodule=dataloader)
 
@@ -144,6 +205,6 @@ def main(args):
 if __name__ == '__main__':
     args = parse_args()
     if args.do_test:
-        generation(args)
+        batch_generation(args)
     else:
         main(args)

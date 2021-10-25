@@ -1,10 +1,11 @@
 __pycache__/
 
-ckpts/
+ckpts*/
 lightning_logs/
 LOTdatasets/
-output/
+output*/
 wandb/
 models/
+
 
 *.out
