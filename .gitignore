@@ -7,5 +7,6 @@ output*/
 wandb/
 models/
 
-
+data
+.ipynb_checkpoints
 *.out

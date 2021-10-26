@@ -186,8 +186,8 @@ def main(args):
         monitor="bleu-1",
         dirpath=args.ckpt_dir,
         filename=args.model_name+"-{epoch:2d}",
-        save_top_k=5,
-        every_n_epochs=2,
+        save_top_k=-1,
+        every_n_epochs=1,
         mode="max"
     )
 
