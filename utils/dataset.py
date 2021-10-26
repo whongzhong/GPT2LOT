@@ -33,7 +33,7 @@ class OutGenDataset(Dataset):
     def preprocess(self, task_name):
         assert os.path.isfile(os.path.join(self.root, f'{task_name}.jsonl')) 
 
-        if not os.path.isfile(os.path.join(self.root, f'{self.model_name}_{task_name}.source')):
+        if not os.path.isfile(os.path.join(self.root, f'{self.model_name}_{task_name}.sample')):
             samples = []
             with open(os.path.join(self.root, f'{task_name}.jsonl'), 'r') as f:
                 for line in f.readlines():

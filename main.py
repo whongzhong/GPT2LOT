@@ -196,7 +196,7 @@ def main(args):
     #    test_model), args=args, tokenizer=tokenizer, special_tokens=special_tokens)
     # accelerator="ddp", 
     #trainer = Trainer(gpus=-1, accelerator="ddp", callbacks=[checkpoint_callback], max_epochs=args.epoch_num)
-    trainer = Trainer(gpus=-1, accelerator="ddp", callbacks=[checkpoint_callback], max_epochs=args.epoch_num)
+    trainer = Trainer(gpus=-1, accelerator="ddp", callbacks=[checkpoint_callback], max_epochs=args.epoch_num, precision=16)
     trainer.fit(model, datamodule=dataloader)
 
     wandb.finish()
