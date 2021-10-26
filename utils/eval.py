@@ -6,6 +6,8 @@ import jieba
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from nltk import ngrams
 from rouge import Rouge
+
+special_token = '<DELIMETER>'
 def bleu(data):
     """
     compute rouge score
@@ -61,7 +63,7 @@ def rouge(ipt, cand):
         for name2 in item_name:
             res["%s-%s"%(name1, name2)] = []
     for k, (tmp_ipt, tmp_cand) in enumerate(zip(ipt, cand)):
-        for tmp_ref in tmp_ipt.split("#"):
+        for tmp_ref in tmp_ipt.split(special_token):
             # print(tmp_ref.strip())
             # print(" ".join(tmp_cand))
 
@@ -230,10 +232,9 @@ def compute_batch(golden_batch, pred_batch, key_word_batch, return_dict=True):
     ipt = key_word_batch
     truth = golden_batch
     pred = pred_batch
-
     kw2id = []
     for i1, t1 in zip(ipt, truth):
-        kw_list = i1.strip().split("<DELIMETER>")
+        kw_list = i1.strip().split(special_token)
         pos = [t1.strip().find(kw.strip()) for kw in kw_list]
 
         idlist = list(range(len(pos)))
@@ -249,6 +250,7 @@ def compute_batch(golden_batch, pred_batch, key_word_batch, return_dict=True):
     res.update(rouge(ipt=ipt, cand=pred))
     res.update(order(ipt=ipt, cand=pred, kw2id=kw2id))
     
+    import ipdb; ipdb.set_trace()
     # for key in res:
     #     res[key] = "_"
     return res

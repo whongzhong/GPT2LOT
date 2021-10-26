@@ -28,7 +28,7 @@ python main.py --do_test \
     --pad_token '[PAD]' \
     --model_name 'BART' \
     --max_length '512' \
-    --output_dir 'output/output_extra_ll' \
+    --output_dir 'output/output_extra_ll_phase2' \
     --data_root './LOTdatasets'\
     --ckpt_dir 'ckpts_max_data' 
     #--ckpt_dir 'ckpts/orderd_model'
