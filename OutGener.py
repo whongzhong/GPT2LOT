@@ -15,7 +15,7 @@ from transformers import (
 )
 
 class OutGenerModel(LightningModule):
-    def __init__(self, args, tokenizer, special_tokens: dict):
+    def __init__(self, args, tokenizer, special_tokens: dict, wandb_run=None):
         super().__init__()
         self.args = args
         if self.args.model_name == 'BART':
@@ -36,6 +36,8 @@ class OutGenerModel(LightningModule):
         self.model.config.bos_token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.bos_token)
         self.model.config.pad_token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token)
         self.model.config.forced_eos_token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token)
+        
+        self.wandb_run = wandb_run
 
     def setup(self, stage=None) -> None:
         if stage != "fit":
@@ -142,7 +144,8 @@ class OutGenerModel(LightningModule):
 
 
         if not self.trainer.running_sanity_check:
-            wandb.log(res)
+            if self.wandb_run:
+                self.wandb_run.log(res)
             self.log("ppl", ppl, sync_dist=True)
             self.log("bleu-1", res['bleu-1'], sync_dist=True)
 

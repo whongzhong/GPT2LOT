@@ -15,11 +15,11 @@ source ~/.bashrc
 conda activate lot
 
 # 输入要执行的命令，例如 ./hello 或 python test.py 等
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
 export PYTHONPATH=.
 
 python main.py \
-    --epoch_num 30 \
+    --epoch_num 10 \
     --train_batch_size 14 \
     --val_batch_size 30 \
     --eos_token '[EOS]' \
@@ -30,8 +30,9 @@ python main.py \
     --model_name 'BART' \
     --max_length '400' \
     --model_path "models/BART"\
-    --data_root './LOTdatasets/datasets/essaydatasets' \
-    --ckpt_dir 'ckpts_max_data' 
+    --data_root './LOTdatasets/extra_data' \
+    --ckpt_dir 'ckpts_max_data' \
+    --test_model 'BART-epoch=19.ckpt' 
     #--test_model 'BART-epoch=19-v1.ckpt' 
     #--data_root './LOTdatasets/extradata' \
     #--data_root './LOTdatasets/outgen/board/data'

@@ -177,7 +177,7 @@ def main(args):
     seed.seed_everything(args.random_seed)
 
     wandb.login()
-    wandb.init(project="BART-outgen", group="DDP")
+    wandb_run = wandb.init(project="BART-outgen", group="DDP")
 
     tokenizer, special_tokens = redefine_tokenizer(args)
 
@@ -191,12 +191,13 @@ def main(args):
         mode="max"
     )
 
-    model = OutGenerModel(args, tokenizer, special_tokens)
-    #model = OutGenerModel.load_from_checkpoint(os.path.join(args.ckpt_dir, args.\
-    #    test_model), args=args, tokenizer=tokenizer, special_tokens=special_tokens)
+    model = OutGenerModel(args, tokenizer, special_tokens, wandb_run)
+    model = OutGenerModel.load_from_checkpoint(os.path.join(args.ckpt_dir, args.\
+        test_model), args=args, tokenizer=tokenizer, special_tokens=special_tokens, runs = wandb_run)
     # accelerator="ddp", 
     #trainer = Trainer(gpus=-1, accelerator="ddp", callbacks=[checkpoint_callback], max_epochs=args.epoch_num)
-    trainer = Trainer(gpus=-1, accelerator="ddp", callbacks=[checkpoint_callback], max_epochs=args.epoch_num)
+   # trainer = Trainer(gpus=1, callbacks=[checkpoint_callback], max_epochs=args.epoch_num, precision=16)
+    trainer = Trainer(gpus=-1, accelerator="ddp", callbacks=[checkpoint_callback], max_epochs=args.epoch_num, precision=16)
     trainer.fit(model, datamodule=dataloader)
 
     wandb.finish()
