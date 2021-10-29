@@ -1,3 +1,4 @@
+#coding=utf-8
 import argparse
 from ast import parse
 from fsspec import spec
@@ -29,19 +30,22 @@ def parse_args():
     
     parser = argparse.ArgumentParser()
     
-
-    parser.add_argument("--data_root", type=str, default=os.path.join("./LOTdatasets/outgen"), help="Dataset root path")
-    parser.add_argument("--model_path", type=str, default="./models/BART",  help="Path to save or load the model")
+    parser.add_argument("--root", type=str, default=os.path.join("/userhome/whzhong/code/GPT2LOT"), help="project root path")
+    parser.add_argument("--data_root", type=str, default=os.path.join("LOTdatasets/outgen"), help="Dataset root path")
+    parser.add_argument("--model_path", type=str, default="models/BART",  help="Path to save or load the model")
     parser.add_argument("--output_dir", type=str, default="output", help="Path to output generating files")
     parser.add_argument("--ckpt_dir", type=str, default="ckpts", help="Path to output generating files")
+    parser.add_argument("--ckpt_load_dir", type=str, default="ckpts", help="Path to load model checkpoints for training")
     parser.add_argument("--test_model", type=str, default="BART-epoch= 2.ckpt", help="test model file name")
 
     parser.add_argument("--test_pth", type=str, default="test_dataset.pth", help="test model file name")
 
     parser.add_argument("--do_train", action='store_true', default=True, help="whether do training")
+    parser.add_argument("--cont_train", action='store_true', default=False, help="whether do training")
     parser.add_argument("--do_test", action='store_true', default=False, help="whether do generation")
 
     parser.add_argument("--model_name", type=str, default="BART", help="Path to output generating files")
+    parser.add_argument("--group_name", type=str, default="DDP", help="group name for ddp training")
     
     parser.add_argument("--max_length", type=int, default=500)
     parser.add_argument("--min_length", type=int, default=200)
@@ -70,6 +74,13 @@ def parse_args():
     
 
     args = parser.parse_args()
+    
+    args.data_root = os.path.join(args.root, args.data_root)
+    args.model_path = os.path.join(args.root, args.model_path)
+    args.output_dir = os.path.join(args.root, args.output_dir)
+    args.ckpt_dir = os.path.join(args.root, args.ckpt_dir)
+    args.ckpt_load_dir = os.path.join(args.root, args.ckpt_load_dir)
+
 
     return args
 
@@ -77,7 +88,7 @@ def parse_args():
 
 def redefine_tokenizer(args):
 
-    if args.model_name == 'BART':
+    if args.model_name == 'BART' or args.model_name == 'CPT':
         
         special_tokens = {'delimeter': args.delimeter_token, 'eos': args.eos_token, 'bos': args.bos_token, 'sep': args.sep_token}
         addtional_tokens = {'bos_token': special_tokens['bos'], 'eos_token': special_tokens['eos'], 'additional_special_tokens':\
@@ -105,14 +116,16 @@ def batch_generation(args):
     seed.seed_everything(args.random_seed)
 
     tokenizer, special_tokens = redefine_tokenizer(args)
-
     dataset = DataLoader(OutGenDataset(args.data_root, 'test', special_tokens), \
     batch_size=args.test_batch_size, shuffle=False, num_workers=args.workers, pin_memory=True)
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # args, tokenizer, special_tokens, batch_num
-    model = OutGenerModel.load_from_checkpoint(os.path.join("~/code/GPT2LOT",args.ckpt_dir, args.test_model), \
+    print(os.path.join(args.ckpt_dir, args.test_model))
+    
+    #import ipdb; ipdb.set_trace()
+    model = OutGenerModel.load_from_checkpoint(os.path.join(args.ckpt_dir, args.test_model), \
         args=args, tokenizer=tokenizer, special_tokens=special_tokens)
     model.to(device)
     model.eval()
@@ -128,7 +141,7 @@ def batch_generation(args):
             sentence_ids = torch.tensor(encoded_batch.input_ids)
             sentence_ids = sentence_ids.to(device)
             output = model(sentence_ids, max_length=args.max_length)
-            if args.model_name == "BART":
+            if args.model_name == "BART" or args.model_name == "CPT":
                 inference_results = [tokenizer.decode(sample, skip_special_tokens=True)\
                     .replace(" ", "").replace(special_tokens['delimeter'], "") for sample in output]
                 for inference_result in inference_results:
@@ -164,7 +177,7 @@ def generation(args):
             sentence_ids = torch.tensor([tokenizer(line).input_ids])
             sentence_ids = sentence_ids.to(device)
             output = model(sentence_ids, max_length=args.max_length)
-            if args.model_name == "BART":
+            if args.model_name == "BART" or args.model_name == "CPT":
                 inference_result = tokenizer.decode(output[0], skip_special_tokens=True)\
                 .replace(" ", "").replace(special_tokens['delimeter'], "")
             else:
@@ -176,8 +189,8 @@ def main(args):
 
     seed.seed_everything(args.random_seed)
 
-    wandb.login()
-    wandb_run = wandb.init(project="BART-outgen", group="DDP")
+    wandb.login(key='618360cab03417467d48fa9773513264ef8f4794')
+    wandb_run = wandb.init(project="BART-outgen", group=args.group_name)
 
     tokenizer, special_tokens = redefine_tokenizer(args)
 
@@ -191,9 +204,11 @@ def main(args):
         mode="max"
     )
 
-    model = OutGenerModel(args, tokenizer, special_tokens, wandb_run)
-    model = OutGenerModel.load_from_checkpoint(os.path.join(args.ckpt_dir, args.\
-        test_model), args=args, tokenizer=tokenizer, special_tokens=special_tokens, runs = wandb_run)
+    if args.cont_train:
+        model = OutGenerModel.load_from_checkpoint(os.path.join(args.ckpt_load_dir, args.\
+           test_model), args=args, tokenizer=tokenizer, special_tokens=special_tokens, runs = wandb_run)
+    else:
+        model = OutGenerModel(args, tokenizer, special_tokens, wandb_run)
     # accelerator="ddp", 
     #trainer = Trainer(gpus=-1, accelerator="ddp", callbacks=[checkpoint_callback], max_epochs=args.epoch_num)
    # trainer = Trainer(gpus=1, callbacks=[checkpoint_callback], max_epochs=args.epoch_num, precision=16)

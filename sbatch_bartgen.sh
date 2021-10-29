@@ -1,26 +1,52 @@
 #!/bin/bash
-#SBATCH --error error_bart_gen_ordered.out                       # 输出错误
-#SBATCH -J bart-gen                               # 作业名为 test
-#SBATCH -o test_bart_gen_ordered.out                           # 屏幕上的输出文件重定向到 test.out
-#SBATCH -p compute                            # 作业提交的分区为 compute
-#SBATCH -N 1                                  # 作业申请 1 个节点
-#SBATCH --ntasks-per-node=1                   # 单节点启动的进程数为 1
-#SBATCH --cpus-per-task=4                    # 单任务使用的 CPU 核心数为 4
-#SBATCH -t 12:00:00                            # 任务运行的最长时间为 1 小时
-#SBATCH --gres=gpu:tesla_v100-pcie-32gb:1
-
-source ~/.bashrc
-
-# 设置运行环境
-conda activate lot
 
 # 输入要执行的命令，例如 ./hello 或 python test.py 等
 export CUDA_VISIBLE_DEVICES=0
-export PYTHONPATH=.
+export PYTHONPATH=/userhome/whzhong/code/GPT2LOT
+export WANDB_MODE=offline
+export LC_ALL=C.UTF-8
+
+exec 1>info/normal.output
+exec 2>info/normal.error
 
 python main.py --do_test \
-    --test_model 'BART-epoch=19.ckpt' \
-    --epoch_num 12 \
+    --test_model 'BART-epoch=18.ckpt' \
+    --model_name 'BART' \
+    --test_batch_size 7 \
+    --eos_token '[EOS]' \
+    --bos_token '[BOS]' \
+    --delimeter_token '<DELIMETER>' \
+    --sep_token '<sep>' \
+    --pad_token '[PAD]' \
+    --model_name 'BART' \
+    --max_length '512' \
+    --root '/userhome/whzhong/code/GPT2LOT' \
+    --output_dir 'output/permute' \
+    --model_path "data/models/BART" \
+    --data_root 'data/datasets/LOTdatasets' \
+    --ckpt_dir 'ckpts/permute' 
+
+    
+python main.py --do_test \
+    --test_model 'BART-epoch=35.ckpt' \
+    --model_name 'BART' \
+    --test_batch_size 10 \
+    --eos_token '[EOS]' \
+    --bos_token '[BOS]' \
+    --delimeter_token '<DELIMETER>' \
+    --sep_token '<sep>' \
+    --pad_token '[PAD]' \
+    --model_name 'BART' \
+    --max_length '512' \
+    --root '/userhome/whzhong/code/GPT2LOT' \
+    --output_dir 'output/permute_augment' \
+    --model_path "data/models/BART" \
+    --data_root 'data/datasets/LOTdatasets' \
+    --ckpt_dir 'ckpts/rerake_augment' 
+    #--data_root './LOTdatasets/outgen/board/data'
+    
+/userhome/anaconda3/envs/lot10/bin/python main.py --cont_train\
+    --epoch_num 40 \
     --train_batch_size 8 \
     --val_batch_size 8 \
     --eos_token '[EOS]' \
@@ -30,10 +56,8 @@ python main.py --do_test \
     --pad_token '[PAD]' \
     --model_name 'BART' \
     --max_length '512' \
-    --output_dir 'output_ordered/ordered_model' \
-    --model_path "models/BART"\
-    --data_root './LOTdatasets/orderd'
-    #--ckpt_dir 'ckpts/orderd_model'
-
-    
-    #--data_root './LOTdatasets/outgen/board/data'
+    --root '/userhome/whzhong/code/GPT2LOT' \
+    --model_path "data/models/CBART" \
+    --data_root 'data/datasets/LOTdatasets' \
+    --ckpt_load_dir 'ckpts/cbart' \
+    --test_model 'BART-epoch=36.ckpt'

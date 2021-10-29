@@ -3,3 +3,5 @@ wandb
 jieba
 nltk
 rouge
+pytorch-lightning
+transformers

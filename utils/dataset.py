@@ -31,11 +31,12 @@ class OutGenDataset(Dataset):
         return {'source': source, 'target': target}
 
     def preprocess(self, task_name):
+        #print(os.path.join(self.root, f'{task_name}.jsonl'))
         assert os.path.isfile(os.path.join(self.root, f'{task_name}.jsonl')) 
 
         if not os.path.isfile(os.path.join(self.root, f'{self.model_name}_{task_name}.sample')):
             samples = []
-            with open(os.path.join(self.root, f'{task_name}.jsonl'), 'r') as f:
+            with open(os.path.join(self.root, f'{task_name}.jsonl'), 'r', encoding='utf-8') as f:
                 for line in f.readlines():
                     json_data = json.loads(line)
                     samples.append(self.data_concat(json_data))

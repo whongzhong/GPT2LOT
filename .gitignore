@@ -6,7 +6,9 @@ LOTdatasets/
 output*/
 wandb/
 models/
+info/
 
 data
 .ipynb_checkpoints
 *.out
+*.sh

@@ -38,6 +38,21 @@ def bleu(data):
 
 
 
+def repetition_distinct_validation(eval_data):
+    result = {}
+    for i in range(1, 5):
+        all_ngram, all_ngram_num = {}, 0.
+        for k, tmp_data in enumerate(eval_data):
+            ngs = ["_".join(c) for c in ngrams(tmp_data, i)]
+            all_ngram_num += len(ngs)
+            for s in ngs:
+                if s in all_ngram:
+                    all_ngram[s] += 1
+                else:
+                    all_ngram[s] = 1
+        result["distinct-%d"%i] = len(all_ngram) / float(all_ngram_num)
+    return result
+
 def repetition_distinct(eval_data):
     result = {}
     for i in range(1, 5):
@@ -226,6 +241,20 @@ def load_file(filename):
 def proline(line):
     return " ".join([w for w in jieba.cut("".join(line.strip().split()))])
 
+def overall_compare(res):
+    small = [26.58, 16.04, 17.90, 31.38, 83.64, 63.15]
+    true = [100, 100, 23.47, 42.17, 100, 100]
+    predict = [res["bleu-1"], res["bleu-2"], res["distinct-3"], res["distinct-4"], res["coverage"], res["order"]]
+    sum = 0
+    wi = []
+    for a, b in zip(true, small):
+        wi.append(a / b)
+        sum += a / b
+    overall = 0
+    for a, w in zip(predict, wi):
+        overall += a * (w / sum)
+    return overall
+
 def compute_batch(golden_batch, pred_batch, key_word_batch, return_dict=True):
 
     #ipt = ["#".join(g["outline"]) for g in golden_data]
@@ -246,11 +275,10 @@ def compute_batch(golden_batch, pred_batch, key_word_batch, return_dict=True):
 
     eval_data = [{"reference": proline(g), "candidate": proline(p)} for g, p in zip(truth, pred)]
     res = bleu(eval_data)
-    res.update(repetition_distinct(eval_data))
+    #res.update(repetition_distinct(eval_data))
     res.update(rouge(ipt=ipt, cand=pred))
     res.update(order(ipt=ipt, cand=pred, kw2id=kw2id))
-    
-    import ipdb; ipdb.set_trace()
+    #res.update({"overall": overall_compare(res)})
     # for key in res:
     #     res[key] = "_"
     return res
@@ -268,13 +296,13 @@ def compute(golden_file, pred_file, return_dict=True):
     if len(golden_data) != len(pred_data):
         raise RuntimeError("Wrong Predictions")
 
-    ipt = ["#".join(g["outline"]) for g in golden_data]
+    ipt = [special_token.join(g["outline"]) for g in golden_data]
     truth = [g["story"] for g in golden_data]
     pred = [p["story"] for p in pred_data]
 
     kw2id = []
     for i1, t1 in zip(ipt, truth):
-        kw_list = i1.strip().split("#")
+        kw_list = i1.strip().split(special_token)
         pos = [t1.strip().find(kw.strip()) for kw in kw_list]
 
         idlist = list(range(len(pos)))
@@ -289,7 +317,7 @@ def compute(golden_file, pred_file, return_dict=True):
     res.update(repetition_distinct(eval_data))
     res.update(rouge(ipt=ipt, cand=pred))
     res.update(order(ipt=ipt, cand=pred, kw2id=kw2id))
-    
+    res.update({"overall": overall_compare(res)})
     # for key in res:
     #     res[key] = "_"
     return res

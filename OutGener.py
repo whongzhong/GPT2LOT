@@ -1,10 +1,18 @@
+#coding=utf-8
 import torch
 from pytorch_lightning.core.lightning import LightningModule
 from torch.nn import CrossEntropyLoss
-from utils.eval import compute_batch
+from utils.eval import compute_batch, overall_compare
+from utils.metric import Distinct
+
+import io
+import sys
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer,encoding='utf-8')
 
 import wandb
 
+
+from modeling_cpt import CPTForConditionalGeneration
 from transformers import (
     CONFIG_NAME,
     WEIGHTS_NAME,
@@ -20,6 +28,8 @@ class OutGenerModel(LightningModule):
         self.args = args
         if self.args.model_name == 'BART':
             self.model = AutoModelForSeq2SeqLM.from_pretrained(args.model_path) 
+        elif self.args.model_name == 'CPT':
+            self.model = CPTForConditionalGeneration.from_pretrained(args.model_path)
         else:
             self.model = AutoModelWithLMHead.from_pretrained(args.model_path)
         self.model_name = args.model_name
@@ -38,6 +48,7 @@ class OutGenerModel(LightningModule):
         self.model.config.forced_eos_token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token)
         
         self.wandb_run = wandb_run
+        self.distincter = Distinct(self.tokenizer, self.special_tokens)
 
     def setup(self, stage=None) -> None:
         if stage != "fit":
@@ -89,7 +100,7 @@ class OutGenerModel(LightningModule):
         return output
 
     def training_step(self, batch, batch_idx):
-        if self.args.model_name == "BART":
+        if self.args.model_name == "BART" or self.args.model_name == "CPT":
             encoded_batch, attention_mask, encoded_label_batch, _ = batch
         else: 
             encoded_batch, attention_mask, encoded_label_batch, _ = batch
@@ -99,9 +110,9 @@ class OutGenerModel(LightningModule):
         return output['loss']
 
     def validation_step(self, batch, batch_idx):
-        if self.args.model_name == "BART":
+        if self.args.model_name == "BART" or self.args.model_name == "CPT":
             encoded_batch, attention_mask, encoded_label_batch, answer_batch = batch
-            generation_result = self(encoded_batch)
+            generation_result = self(encoded_batch, max_length = self.args.max_length)
         else: 
             encoded_batch, attention_mask, encoded_label_batch, encoded_generate_batch = batch
             generation_result_sent = self(encoded_generate_batch, self.args.max_length * 2)
@@ -120,16 +131,26 @@ class OutGenerModel(LightningModule):
         label_num = len(encoded_label_batch[encoded_label_batch != self.pad_id].view(-1))
         label_batch, inference_result, key_word_batch = \
             self.post_process_for_validation(encoded_batch, answer_batch, generation_result)
-        return output_loss, label_num, label_batch, inference_result, key_word_batch
         
-
+        generation_len = (self.args.max_length - generation_result.shape[1])
+        if generation_len > 0:
+            padding_tensor = generation_result.new_full((generation_result.shape[0], generation_len), \
+                            self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token))
+            generation_result = torch.cat((generation_result, padding_tensor), 1)
+            
+        return output_loss, label_num, label_batch, inference_result, key_word_batch, generation_result
+        
     def validation_epoch_end(self, validation_output) -> None:
-        outputs, label_batch, inference_result, key_word_batch = [], [], [], []
-        for i1, i2, i3, i4, i5 in validation_output:
+        
+        outputs, label_batch, inference_result, key_word_batch, generation_result = [], [], [], [], []
+        for i1, i2, i3, i4, i5, i6 in validation_output:
             outputs.append((i1, i2))
             label_batch.extend(i3)
             inference_result.extend(i4)
             key_word_batch.extend(i5)
+            generation_result.append(i6)
+        
+        generation_result = torch.cat(generation_result, 0)
         total_loss = 0.0
         total_batch_len = 0
         for loss, label_num in outputs:
@@ -138,19 +159,26 @@ class OutGenerModel(LightningModule):
         total_loss /= total_batch_len
         ppl = torch.exp(total_loss)
         
-        res = {"epoch_num": self.current_epoch, "ppl": ppl, "loss": total_loss}
+        res = self.distincter.forward(generation_result)     
+        res.update({"epoch_num": self.current_epoch, "ppl": ppl, "loss": total_loss})
         
         res.update(compute_batch(label_batch, inference_result, key_word_batch))
-
+        
+        res.update({"overall": overall_compare(res)})
+        
+        print(res)
+        print("\n")
 
         if not self.trainer.running_sanity_check:
-            if self.wandb_run:
+            if self.wandb_run is not None:
                 self.wandb_run.log(res)
+            else:
+                wandb.log(res)
             self.log("ppl", ppl, sync_dist=True)
             self.log("bleu-1", res['bleu-1'], sync_dist=True)
 
     def post_process_for_validation(self, encoded_batch, answer_batch, generation_result):
-        if self.args.model_name == "BART":
+        if self.args.model_name == "BART" or self.args.model_name == "CPT":
             
             inference_result = [self.tokenizer.decode(sample[1:-1], skip_special_tokens=True)\
                     .replace(" ", "").replace(self.special_tokens['delimeter'], "") for sample in generation_result]
@@ -160,10 +188,10 @@ class OutGenerModel(LightningModule):
             key_word_batch = [self.tokenizer.decode(sample, skip_special_tokens=False)\
                     .replace(" ", "").replace(self.tokenizer.cls_token, "").replace(self.tokenizer.pad_token, "")\
                     .replace(self.tokenizer.sep_token, "") for sample in encoded_batch]
-            print("\n")
-            print(key_word_batch[0])
-            print("\n")
-            print(inference_result[0])
+            #print("\n")
+            #print(key_word_batch[0])
+            #print("\n")
+            #print(inference_result[0])
         else:
             
             inference_result = [self.tokenizer.decode(sample[input_len:], skip_special_tokens=True)\
@@ -178,10 +206,10 @@ class OutGenerModel(LightningModule):
             key_word_batch = [self.tokenizer.decode(sample[:ids], skip_special_tokens=False)\
                     .replace(" ", "").replace(self.tokenizer.cls_token, "").replace(self.tokenizer.pad_token, "")\
                     .replace(self.tokenizer.sep_token, "") for sample, ids in zip(encoded_batch,delimeter_idx)]
-            print("\n")
-            print(key_word_batch[0])
-            print("\n")
-            print(inference_result[0])
+            #print("\n")
+            #print(key_word_batch[0])
+            #print("\n")
+            #print(inference_result[0])
 
         return label_batch, inference_result, key_word_batch
 '''
