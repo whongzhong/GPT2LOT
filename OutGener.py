@@ -41,7 +41,7 @@ class OutGenerModel(LightningModule):
         self.pad_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token)
         self.sep_ids = self.tokenizer.convert_tokens_to_ids(special_tokens['sep'])
 
-        self.model.config.decoder_start_token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.bos_token)
+        self.model.config.decoder_start_token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token)
         self.model.config.eos_token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.eos_token)
         self.model.config.bos_token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.bos_token)
         self.model.config.pad_token_id = self.tokenizer.convert_tokens_to_ids(self.tokenizer.pad_token)
@@ -95,7 +95,7 @@ class OutGenerModel(LightningModule):
         # attention mask
         output = self.model.generate(input_ids, do_sample=True, max_length=max_length,\
             top_k=0, top_p=0.9, length_penalty = self.args.length_penalty,\
-            decoder_start_token_id=self.tokenizer.bos_token_id, bos_token_id = self.tokenizer.bos_token_id,\
+            decoder_start_token_id=self.tokenizer.eos_token_id, bos_token_id = self.tokenizer.bos_token_id,\
             eos_token_id=self.tokenizer.eos_token_id, min_length = self.args.min_length)
         return output
 
@@ -159,12 +159,25 @@ class OutGenerModel(LightningModule):
         total_loss /= total_batch_len
         ppl = torch.exp(total_loss)
         
-        res = self.distincter.forward(generation_result)     
+        
+        cat_res = compute_batch(label_batch, inference_result, key_word_batch)
+        
+        print("rouge-tmplen: %d"%len(cat_res["coverage-cat"]))
+        res = self.distincter.forward(generation_result, \
+             generation_result.new_tensor(cat_res["bleu-1-cat"], dtype=torch.double), \
+             generation_result.new_tensor(cat_res["bleu-2-cat"], dtype=torch.double), \
+             generation_result.new_tensor(cat_res["coverage-cat"], dtype=torch.double), \
+             generation_result.new_tensor(cat_res["order-cat"], dtype=torch.double))  
+        
         res.update({"epoch_num": self.current_epoch, "ppl": ppl, "loss": total_loss})
         
-        res.update(compute_batch(label_batch, inference_result, key_word_batch))
+        #res['bleu-1'] = torch.mean(self.bleu_1)
+        #res['bleu-2'] = torch.mean(self.bleu_2)
         
-        res.update({"overall": overall_compare(res)})
+        #res['coverage'] = torch.mean(self.coverage)
+        #res['order'] = torch.mean(self.order)
+        
+        #res.update({"overall": overall_compare(res)})
         
         print(res)
         print("\n")

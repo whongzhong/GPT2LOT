@@ -28,9 +28,9 @@ python main.py --do_test \
 
     
 python main.py --do_test \
-    --test_model 'BART-epoch=35.ckpt' \
+    --test_model 'BART-epoch=49.ckpt' \
     --model_name 'BART' \
-    --test_batch_size 10 \
+    --test_batch_size 6 \
     --eos_token '[EOS]' \
     --bos_token '[BOS]' \
     --delimeter_token '<DELIMETER>' \
@@ -39,10 +39,27 @@ python main.py --do_test \
     --model_name 'BART' \
     --max_length '512' \
     --root '/userhome/whzhong/code/GPT2LOT' \
-    --output_dir 'output/permute_augment' \
+    --output_dir 'output/cbart/normalfp' \
     --model_path "data/models/BART" \
     --data_root 'data/datasets/LOTdatasets' \
-    --ckpt_dir 'ckpts/rerake_augment' 
+    --ckpt_dir 'ckpts/cbart/normalfp' 
+    #--data_root './LOTdatasets/outgen/board/data'
+    
+python main.py --do_test \
+    --test_model 'BART-epoch=39.ckpt' \
+    --model_name 'BART' \
+    --test_batch_size 10 \
+    --eos_token '[EOS]' \
+    --bos_token '[BOS]' \
+    --delimeter_token '<DELIMETER>' \
+    --sep_token '<sep>' \
+    --pad_token '[PAD]' \
+    --max_length '512' \
+    --root '/userhome/whzhong/code/GPT2LOT' \
+    --output_dir 'output/cbart/quotation' \
+    --model_path "data/models/CBART" \
+    --data_root 'data/datasets/LOTdatasets' \
+    --ckpt_dir 'ckpts/cbart/quotation' 
     #--data_root './LOTdatasets/outgen/board/data'
     
 /userhome/anaconda3/envs/lot10/bin/python main.py --cont_train\
@@ -61,3 +78,8 @@ python main.py --do_test \
     --data_root 'data/datasets/LOTdatasets' \
     --ckpt_load_dir 'ckpts/cbart' \
     --test_model 'BART-epoch=36.ckpt'
+    
+    
+    
+
+    

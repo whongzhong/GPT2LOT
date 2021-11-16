@@ -37,6 +37,8 @@ def parse_args():
     parser.add_argument("--ckpt_dir", type=str, default="ckpts", help="Path to output generating files")
     parser.add_argument("--ckpt_load_dir", type=str, default="ckpts", help="Path to load model checkpoints for training")
     parser.add_argument("--test_model", type=str, default="BART-epoch= 2.ckpt", help="test model file name")
+    parser.add_argument("--resume_dir", type=str, default=None, help="resume training from this path")
+    
 
     parser.add_argument("--test_pth", type=str, default="test_dataset.pth", help="test model file name")
 
@@ -80,6 +82,8 @@ def parse_args():
     args.output_dir = os.path.join(args.root, args.output_dir)
     args.ckpt_dir = os.path.join(args.root, args.ckpt_dir)
     args.ckpt_load_dir = os.path.join(args.root, args.ckpt_load_dir)
+    if args.resume_dir is not None:
+        args.resume_dir = os.path.join(args.root, args.resume_dir)
 
 
     return args
@@ -92,8 +96,9 @@ def redefine_tokenizer(args):
         
         special_tokens = {'delimeter': args.delimeter_token, 'eos': args.eos_token, 'bos': args.bos_token, 'sep': args.sep_token}
         addtional_tokens = {'bos_token': special_tokens['bos'], 'eos_token': special_tokens['eos'], 'additional_special_tokens':\
-            ['<DELIMETER>', '<SEPE>']}
+            ['<DELIMETER>', '<SEPE>', '<WORD>']}
         tokenizer = BertTokenizer.from_pretrained(args.model_path)
+        tokenizer.add_tokens(["“", "”"])
     else:
         special_tokens = {'delimeter': args.delimeter_token, 'eos': args.eos_token, 'bos': args.bos_token, 'sep': args.sep_token, 'pad': args.pad_token}
         addtional_tokens = {'bos_token': special_tokens['bos'], 'eos_token': special_tokens['eos'], 'additional_special_tokens':\
@@ -212,7 +217,10 @@ def main(args):
     # accelerator="ddp", 
     #trainer = Trainer(gpus=-1, accelerator="ddp", callbacks=[checkpoint_callback], max_epochs=args.epoch_num)
    # trainer = Trainer(gpus=1, callbacks=[checkpoint_callback], max_epochs=args.epoch_num, precision=16)
-    trainer = Trainer(gpus=-1, accelerator="ddp", callbacks=[checkpoint_callback], max_epochs=args.epoch_num, precision=16)
+    if args.resume_dir is not None:
+        trainer = Trainer(resume_from_checkpoint=os.path.join(args.resume_dir, args.test_model), gpus=-1, accelerator="ddp", callbacks=[checkpoint_callback], max_epochs=args.epoch_num, precision=16)
+    else:
+        trainer = Trainer(gpus=-1, accelerator="ddp", callbacks=[checkpoint_callback], max_epochs=args.epoch_num, precision=16)
     trainer.fit(model, datamodule=dataloader)
 
     wandb.finish()

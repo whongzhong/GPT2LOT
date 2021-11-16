@@ -8,6 +8,11 @@ from nltk import ngrams
 from rouge import Rouge
 
 special_token = '<DELIMETER>'
+
+
+def proline(line):
+    return " ".join([w for w in jieba.cut("".join(line.strip().split()))])
+
 def bleu(data):
     """
     compute rouge score
@@ -30,15 +35,20 @@ def bleu(data):
 
         for i in range(1, 5):
             res["bleu-%d"%i].append(sentence_bleu(references=[r.strip().split() for r in origin_reference], hypothesis=origin_candidate.strip().split(), weights=tuple([1./i for j in range(i)]))) 
-
+            
+    for i in range(1, 5):
+         res["bleu-%d-cat"%i] = res["bleu-%d"%i].copy()
+            
     for key in res:
-        res[key] = np.mean(res[key])
+        if 'cat' not in key:
+            res[key] = np.mean(res[key])
         
     return res
 
 
 
 def repetition_distinct_validation(eval_data):
+    eval_data = [proline(single_eval_data) for single_eval_data in eval_data]
     result = {}
     for i in range(1, 5):
         all_ngram, all_ngram_num = {}, 0.
@@ -97,9 +107,11 @@ def rouge(ipt, cand):
             except:
                 continue
     for name1 in rouge_name:
-        for name2 in item_name:                
+        for name2 in item_name:
+            res["%s-%s-cat"%(name1, name2)] = res["%s-%s"%(name1, name2)]                
             res["%s-%s"%(name1, name2)] = np.mean(res["%s-%s"%(name1, name2)])
-    return {"coverage": res["rouge-l-r"]}
+            
+    return {"coverage": res["rouge-l-r"], "coverage-cat": res["rouge-l-r-cat"]}
 
 
 def LCS(x, y):
@@ -226,7 +238,7 @@ def order(ipt, cand, kw2id):
             new_rank[idl] = tmp_kw2id[kw_list[ord]]
         num.append(1-inversenum(new_rank))
 
-    return {"order": np.mean(num)}
+    return {"order": np.mean(num), "order-cat": num}
 
 
 
@@ -238,8 +250,6 @@ def load_file(filename):
         f.close()
     return data
 
-def proline(line):
-    return " ".join([w for w in jieba.cut("".join(line.strip().split()))])
 
 def overall_compare(res):
     small = [26.58, 16.04, 17.90, 31.38, 83.64, 63.15]
@@ -318,9 +328,12 @@ def compute(golden_file, pred_file, return_dict=True):
     res.update(rouge(ipt=ipt, cand=pred))
     res.update(order(ipt=ipt, cand=pred, kw2id=kw2id))
     res.update({"overall": overall_compare(res)})
+    
+    res_1 = {"bleu-1": res['bleu-1'], "bleu-2": res['bleu-2'], "distinct-3": res['distinct-3'], "distinct-4": res['distinct-4'], \
+            'order': res['order'], "coverage": res['coverage'], 'overall': res['overall']}
     # for key in res:
     #     res[key] = "_"
-    return res
+    return res_1
 
 def main():
     argv = sys.argv

@@ -6,16 +6,17 @@ export PYTHONPATH=/userhome/whzhong/code/GPT2LOT
 export WANDB_MODE=offline
 export LC_ALL=C.UTF-8
 
-exec 1>info/cbart_shuffle.out
-exec 2>info/cbart_shuffle.error 
 
-# run for cbart permute
+exec 1>info/cbart_newtokencls.out
+exec 2>info/cbart_newtokencls.error 
+
+# run for cbart normal
 /userhome/anaconda3/envs/lot10/bin/python main.py \
-    --epoch_num 40 \
-    --train_batch_size 16 \
-    --val_batch_size 48 \
-    --eos_token '[EOS]' \
-    --bos_token '[BOS]' \
+    --epoch_num 50 \
+    --train_batch_size 8 \
+    --val_batch_size 30 \
+    --eos_token '[SEP]' \
+    --bos_token '[CLS]' \
     --delimeter_token '<DELIMETER>' \
     --sep_token '<sep>' \
     --pad_token '[PAD]' \
@@ -23,17 +24,18 @@ exec 2>info/cbart_shuffle.error
     --max_length '512' \
     --root '/userhome/whzhong/code/GPT2LOT' \
     --model_path "data/models/CBART" \
-    --data_root 'data/datasets/LOTdatasets/permute_data' \
-    --ckpt_dir 'ckpts/cbart/permute' \
-    --group_name 'cbart_permute' 
+    --data_root 'data/datasets/LOTdatasets' \
+    --ckpt_dir 'ckpts/cbart/new_token/cls' \
+    --group_name 'cbart_new_token_cls' 
     
-# run for cbart rerake
-/userhome/anaconda3/envs/lot10/bin/python main.py \
-    --epoch_num 40 \
-    --train_batch_size 16 \
-    --val_batch_size 48 \
-    --eos_token '[EOS]' \
-    --bos_token '[BOS]' \
+    
+    
+/userhome/anaconda3/envs/lot10/bin/python main.py --do_test \
+    --test_model 'BART-epoch=40.ckpt' \
+    --model_name 'BART' \
+    --test_batch_size 30 \
+    --eos_token '[SEP]' \
+    --bos_token '[CLS]' \
     --delimeter_token '<DELIMETER>' \
     --sep_token '<sep>' \
     --pad_token '[PAD]' \
@@ -41,6 +43,27 @@ exec 2>info/cbart_shuffle.error
     --max_length '512' \
     --root '/userhome/whzhong/code/GPT2LOT' \
     --model_path "data/models/CBART" \
-    --data_root 'data/datasets/LOTdatasets/rerake_agument' \
-    --ckpt_dir 'ckpts/cbart/rerake' \
-    --group_name 'cbart_rerake'
+    --data_root 'data/datasets/LOTdatasets' \
+    --ckpt_dir 'ckpts/cbart/new_token/cls' \
+    --output_dir 'output/new_token/cls' 
+    
+/userhome/anaconda3/envs/lot10/bin/python utils/eval.py output/new_token/cls/BART_test.json output/test.jsonl
+    
+/userhome/anaconda3/envs/lot10/bin/python main.py --do_test \
+    --test_model 'BART-epoch=49.ckpt' \
+    --model_name 'BART' \
+    --test_batch_size 30 \
+    --eos_token '[SEP]' \
+    --bos_token '[CLS]' \
+    --delimeter_token '<DELIMETER>' \
+    --sep_token '<sep>' \
+    --pad_token '[PAD]' \
+    --model_name 'BART' \
+    --max_length '512' \
+    --root '/userhome/whzhong/code/GPT2LOT' \
+    --model_path "data/models/CBART" \
+    --data_root 'data/datasets/LOTdatasets' \
+    --ckpt_dir 'ckpts/cbart/new_token/cls' \
+    --output_dir 'output/new_token/cls/49' 
+
+/userhome/anaconda3/envs/lot10/bin/python utils/eval.py output/new_token/cls/49/BART_test.json output/test.jsonl

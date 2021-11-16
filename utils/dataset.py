@@ -25,8 +25,8 @@ class OutGenDataset(Dataset):
             target = f"{self.bos}{outline}{self.sep}{json_data['story']}{self.eos}"
         else:
             outline = self.delimeter.join(json_data['outline']) 
-            source = f"{outline}"
-            target = f"{json_data['story']}{self.eos}"
+            source = f"<WORD>{outline}{self.eos}"
+            target = f"{self.bos}{json_data['story']}{self.eos}"
 
         return {'source': source, 'target': target}
 
